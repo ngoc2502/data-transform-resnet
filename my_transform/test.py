@@ -7,6 +7,7 @@ from spatial_transform import (Compose, Normalize, Resize, CenterCrop,
                                 RandomResizedCrop, RandomHorizontalFlip,
                                 ToTensor, ScaleValue, ColorJitter,
                                 PickFirstChannels)
+from spatial_transform import transform_multi_frames_train,transform_multi_frames_val
 
 import imgaug.augmenters as iaa
 from config import get_cfg_defaults
@@ -28,93 +29,6 @@ def avi2frames(video_path = "UCF-test/v_ApplyEyeMakeup_g01_c01.avi",output_dir =
         else:
             break
     cap.release()
-
-def get_normalize_method(data,mean, std, no_mean_norm, no_std_norm):
-    if no_mean_norm:
-        if no_std_norm:
-            m = [0, 0, 0]
-            s = [1, 1, 1]
-        else:
-            m = [0, 0, 0]
-            s =std
-    else:
-        if no_std_norm:
-            m = mean
-            s = [1, 1, 1]
-        else:
-            m = mean
-            s = std
-    for d, m, s in zip(data, m, s):
-        d.sub_(m).div_(s) 
-    return data
-
-# Setting for train
-
-def get_train_utils(img,opt):
-    assert opt.train_crop in ['random', 'corner', 'center']
-    spatial_transform = []
-    if opt.train_crop == 'random':
-        spatial_transform.append(
-            RandomResizedCrop(
-                opt.sample_size, (opt.train_crop_min_scale, 1.0),
-                (opt.train_crop_min_ratio, 1.0 / opt.train_crop_min_ratio)))
-    elif opt.train_crop == 'corner':
-        scales = [1.0]
-        scale_step = 1 / (2**(1 / 4))
-        for _ in range(1, 5):
-            scales.append(scales[-1] * scale_step)
-        spatial_transform.append(MultiScaleCornerCrop(opt.sample_size, scales))
-    elif opt.train_crop == 'center':
-        spatial_transform.append(Resize(opt.sample_size))
-        spatial_transform.append(CenterCrop(opt.sample_size))
-
-    if not opt.no_hflip:
-        spatial_transform.append(RandomHorizontalFlip())
-    if opt.colorjitter:
-        spatial_transform.append(ColorJitter())
-    spatial_transform.append(ToTensor())
-   
-    spatial_transform.append(ScaleValue(opt.value_scale))
-    spatial_transform = Compose(spatial_transform)
-
-    new_img = spatial_transform (img)
-    new_img = get_normalize_method(new_img,opt.mean, opt.std, opt.no_mean_norm,opt.no_std_norm)
-    return new_img
-
-def transform_multi_frames_train(data,opt):
-    tensor_list = []
-    for img in data:
-        new_img = get_train_utils(img,opt)
-        tensor_list.append(new_img.permute(2,0,1))
-    tensor_data = torch.stack(tensor_list, dim=0)
-    return tensor_data
-
-def transform_multi_frames_val(data,opt):
-    tensor_list = []
-    for img in data:
-        new_img = get_val_utils(img,opt)
-        tensor_list.append(new_img)
-    tensor_data = torch.stack(tensor_list, dim=0)
-    return tensor_data
-
-def get_val_utils(img,opt):
-    spatial_transform1 = [
-        Resize(opt.sample_size),
-        CenterCrop(opt.sample_size),
-    ]
-    spatial_transform1 = Compose(spatial_transform1)
-
-    spatial_transform2=[]
-    spatial_transform2.append(ToTensor())
-    spatial_transform2.append(ScaleValue(opt.value_scale))
-    spatial_transform2 = Compose(spatial_transform2)
-
-    new_img = spatial_transform1 (img)
-    new_img = new_img.numpy().transpose(1,2,0)
-    new_img = spatial_transform2(new_img)
-    new_img = get_normalize_method(new_img,opt.mean, opt.std, opt.no_mean_norm,opt.no_std_norm)
-    return new_img
-
 
 #Convert frames in folder to torch.tensor
 frames_dir = "my_transform/UCF-frames"
